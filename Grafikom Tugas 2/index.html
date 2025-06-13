@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aplikasi Menggambar Garis dan Lain Lain</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap');
+
+  body {
+    margin: 0; padding: 0;
+    font-family: 'Poppins', sans-serif;
+    background: #121212;
+    color: #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  header {
+    background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+    padding: 1rem 2rem;
+    text-align: center;
+    font-weight: 600;
+    font-size: 1.5rem;
+    color: #fff;
+  }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: 1200px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+    gap: 1.5rem;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+    align-items: center; /* Tambah ini untuk penataan vertikal */
+  }
+
+  .group {
+    background: #1e1e1e;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    align-items: center;
+  }
+
+  .group label {
+    font-weight: 600;
+    min-width: 100px;
+  }
+
+  button, .color-swatch, .color-picker-wrapper input[type="color"] {
+    cursor: pointer;
+    border-radius: 8px;
+    border: none;
+    transition: transform 0.2s ease;
+  }
+
+  button:hover, button:focus, .color-swatch:hover, .color-swatch:focus,
+  .color-picker-wrapper input[type="color"]:hover, .color-picker-wrapper input[type="color"]:focus {
+    transform: scale(1.1);
+    outline: none;
+  }
+
+  button {
+    background: #06b6d4;
+    color: white;
+    padding: 8px 16px;
+    font-weight: 600;
+    font-size: 1rem;
+    border-radius: 12px;
+    border: 2px solid transparent;
+  }
+
+  button.active {
+    box-shadow: 0 0 10px #8b5cf6;
+    border-color: #8b5cf6;
+    background: #8b5cf6;
+  }
+
+  .color-swatch {
+    width: 32px;
+    height: 32px;
+    border: 2px solid transparent;
+  }
+
+  .color-swatch.active {
+    border-color: #ffffff;
+    box-shadow: 0 0 8px #fff;
+  }
+
+  /* Style untuk input type="color" */
+  .color-picker-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #1e1e1e; /* Sama dengan group */
+    border-radius: 12px;
+    padding: 12px 16px;
+  }
+
+  .color-picker-wrapper input[type="color"] {
+    -webkit-appearance: none; /* Hapus gaya default browser */
+    -moz-appearance: none;
+    appearance: none;
+    width: 40px; /* Ukuran input color */
+    height: 40px;
+    background-color: transparent;
+    border: 2px solid #8b5cf6; /* Border sesuai tema */
+    border-radius: 8px; /* Sudut membulat */
+    overflow: hidden; /* Penting untuk menyembunyikan border bawaan */
+  }
+
+  .color-picker-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  .color-picker-wrapper input[type="color"]::-webkit-color-swatch {
+    border: none; /* Hapus border internal swatch */
+  }
+  .color-picker-wrapper input[type="color"]::-moz-color-swatch {
+    border: none;
+  }
+
+
+  canvas {
+    border-radius: 20px;
+    background: #222;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.6);
+    cursor: crosshair;
+    max-width: 100%;
+  }
+
+  footer {
+    text-align: center;
+    font-size: 0.875rem;
+    color: #666;
+    margin: 1rem 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  Aplikasi Menggambar Garis dan Lain Lain
+</header>
+
+<main>
+
+  <div class="controls" role="region" aria-label="Kontrol menggambar">
+    <div class="group" role="group" aria-label="Mode Menggambar">
+      <label for="modes">Mode:</label>
+      <button class="mode-btn active" data-mode="point" id="mode-point" aria-pressed="true">Titik</button>
+      <button class="mode-btn" data-mode="line" id="mode-line" aria-pressed="false">Garis</button>
+      <button class="mode-btn" data-mode="rectangle" id="mode-rectangle" aria-pressed="false">Persegi</button>
+      <button class="mode-btn" data-mode="circle" id="mode-circle" aria-pressed="false">Lingkaran</button>
+      <button class="mode-btn" data-mode="ellipse" id="mode-ellipse" aria-pressed="false">Elips</button>
+    </div>
+
+    <div class="group" role="group" aria-label="Warna">
+      <label for="colors">Palet:</label>
+      <div tabindex="0" role="list">
+        <div class="color-swatch active" data-color="#000000" style="background:#000000" role="listitem" aria-label="Hitam" tabindex="0"></div>
+        <div class="color-swatch" data-color="#ff0000" style="background:#ff0000" role="listitem" aria-label="Merah" tabindex="0"></div>
+        <div class="color-swatch" data-color="#00ff00" style="background:#00ff00" role="listitem" aria-label="Hijau" tabindex="0"></div>
+        <div class="color-swatch" data-color="#0000ff" style="background:#0000ff" role="listitem" aria-label="Biru" tabindex="0"></div>
+        <div class="color-swatch" data-color="#ffff00" style="background:#ffff00" role="listitem" aria-label="Kuning" tabindex="0"></div>
+        <div class="color-swatch" data-color="#800080" style="background:#800080" role="listitem" aria-label="Ungu" tabindex="0"></div>
+        <div class="color-swatch" data-color="#ffa500" style="background:#ffa500" role="listitem" aria-label="Oranye" tabindex="0"></div>
+        <div class="color-swatch" data-color="#ffc0cb" style="background:#ffc0cb" role="listitem" aria-label="Pink" tabindex="0"></div>
+        <div class="color-swatch" data-color="#00ffff" style="background:#00ffff" role="listitem" aria-label="Sian" tabindex="0"></div>
+      </div>
+    </div>
+    
+    <div class="color-picker-wrapper" role="group" aria-label="Pilih Warna Kustom">
+      <label for="customColorPicker">Kustom:</label>
+      <input type="color" id="customColorPicker" value="#000000" aria-label="Pilih warna kustom">
+    </div>
+
+    <div class="group" role="group" aria-label="Kontrol lain">
+      <button id="eraserBtn" aria-pressed="false">Penghapus</button>
+      <button id="clearBtn">Bersihkan</button>
+    </div>
+  </div>
+
+  <canvas id="canvas" width="1000" height="600" aria-label="Area gambar, gunakan mouse untuk menggambar"></canvas>
+
+</main>
+
+<footer>
+  Tekan tombol keyboard: P (Titik), L (Garis), R (Persegi), C (Lingkaran), E (Elips), Space (Bersihkan)
+</footer>
+
+<script>
+  (() => {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // State aplikasi
+    let mode = 'point';
+    let color = '#000000';
+    let eraserActive = false;
+
+    let isDrawing = false;
+    let startX = 0;
+    let startY = 0;
+    let savedCanvasState = null;
+
+    // Elemen UI
+    const modeButtons = document.querySelectorAll('.mode-btn');
+    const colorSwatches = document.querySelectorAll('.color-swatch');
+    const customColorPicker = document.getElementById('customColorPicker'); // Ambil elemen input color
+    const eraserBtn = document.getElementById('eraserBtn');
+    const clearBtn = document.getElementById('clearBtn');
+
+    function setMode(newMode) {
+      mode = newMode;
+      eraserActive = false;
+      eraserBtn.setAttribute('aria-pressed', 'false');
+      modeButtons.forEach(btn => {
+        const isActive = btn.dataset.mode === newMode;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive.toString());
+      });
+      // Pastikan mode titik tidak memulai drag
+      if (mode === 'point') {
+        isDrawing = false;
+        savedCanvasState = null;
+      }
+    }
+
+    function setColor(newColor) {
+      color = newColor;
+      eraserActive = false;
+      eraserBtn.setAttribute('aria-pressed', 'false');
+      // Hapus active dari palet warna lain
+      colorSwatches.forEach(swatch => swatch.classList.remove('active'));
+      // Update nilai input type="color"
+      customColorPicker.value = newColor;
+    }
+
+    modeButtons.forEach(btn => {
+      btn.addEventListener('click', () => setMode(btn.dataset.mode));
+    });
+
+    colorSwatches.forEach(swatch => {
+      swatch.addEventListener('click', () => {
+        setColor(swatch.dataset.color);
+        swatch.classList.add('active'); // Tambahkan kembali active untuk swatch yang dipilih
+      });
+      swatch.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setColor(swatch.dataset.color);
+          swatch.classList.add('active'); // Tambahkan kembali active untuk swatch yang dipilih
+          swatch.focus();
+        }
+      });
+    });
+
+    // Event listener untuk input type="color"
+    customColorPicker.addEventListener('input', (e) => {
+      setColor(e.target.value); // Set warna sesuai pilihan picker
+      colorSwatches.forEach(swatch => swatch.classList.remove('active')); // Hapus active dari semua swatch
+    });
+    customColorPicker.addEventListener('change', (e) => {
+      setColor(e.target.value); // Set warna setelah picker ditutup (jika ada perubahan)
+      colorSwatches.forEach(swatch => swatch.classList.remove('active'));
+    });
+
+
+    eraserBtn.addEventListener('click', () => {
+      eraserActive = !eraserActive;
+      if (eraserActive) {
+        eraserBtn.setAttribute('aria-pressed', 'true');
+        modeButtons.forEach(btn => {
+          btn.classList.remove('active');
+          btn.setAttribute('aria-pressed', 'false');
+        });
+        colorSwatches.forEach(swatch => swatch.classList.remove('active'));
+        customColorPicker.value = "#222222"; // Set picker ke warna background kanvas
+      } else {
+        eraserBtn.setAttribute('aria-pressed', 'false');
+        // Saat eraser dinonaktifkan, kembali ke warna sebelumnya (atau default black jika tidak ada)
+        setColor(color); // Atur ulang warna terakhir yang dipilih
+      }
+      // Reset drawing state if eraser is toggled
+      isDrawing = false;
+      savedCanvasState = null;
+    });
+
+    clearBtn.addEventListener('click', () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Reset drawing state on clear
+      isDrawing = false;
+      savedCanvasState = null;
+    });
+
+    function drawPoint(x, y) {
+      ctx.fillStyle = eraserActive ? '#222' : color;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+      ctx.strokeStyle = eraserActive ? '#222' : color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function drawRectangle(x1, y1, x2, y2) {
+      ctx.strokeStyle = eraserActive ? '#222' : color;
+      ctx.lineWidth = 3;
+      const left = Math.min(x1, x2);
+      const top = Math.min(y1, y2);
+      const width = Math.abs(x2 - x1);
+      const height = Math.abs(y2 - y1);
+      ctx.strokeRect(left, top, width, height);
+    }
+
+    function drawCircle(cx, cy, x2, y2) {
+      ctx.strokeStyle = eraserActive ? '#222' : color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      const radius = Math.hypot(x2 - cx, y2 - cy);
+      ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+
+    function drawEllipse(x1, y1, x2, y2) {
+      ctx.strokeStyle = eraserActive ? '#222' : color;
+      ctx.lineWidth = 3;
+      const left = Math.min(x1, x2);
+      const top = Math.min(y1, y2);
+      const width = Math.abs(x2 - x1);
+      const height = Math.abs(y2 - y1);
+      ctx.beginPath();
+      ctx.ellipse(left + width/2, top + height/2, width/2, height/2, 0, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+
+    function getMousePos(evt) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: evt.clientX - rect.left,
+        y: evt.clientY - rect.top
+      };
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      let pos = getMousePos(e);
+      startX = pos.x;
+      startY = pos.y;
+
+      if (mode === 'point') {
+        drawPoint(startX, startY);
+        isDrawing = false; // Titik langsung jadi, tidak perlu drag
+      } else {
+        isDrawing = true;
+        savedCanvasState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      }
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      if (!isDrawing) return;
+      let pos = getMousePos(e);
+
+      ctx.putImageData(savedCanvasState, 0, 0);
+
+      if (mode === 'line') {
+        drawLine(startX, startY, pos.x, pos.y);
+      } else if (mode === 'rectangle') {
+        drawRectangle(startX, startY, pos.x, pos.y);
+      } else if (mode === 'circle') {
+        drawCircle(startX, startY, pos.x, pos.y);
+      } else if (mode === 'ellipse') {
+        drawEllipse(startX, startY, pos.x, pos.y);
+      }
+    });
+
+    canvas.addEventListener('mouseup', e => {
+      if (!isDrawing) return;
+      isDrawing = false;
+      let pos = getMousePos(e);
+
+      ctx.putImageData(savedCanvasState, 0, 0);
+      if (mode === 'line') {
+        drawLine(startX, startY, pos.x, pos.y);
+      } else if (mode === 'rectangle') {
+        drawRectangle(startX, startY, pos.x, pos.y);
+      } else if (mode === 'circle') {
+        drawCircle(startX, startY, pos.x, pos.y);
+      } else if (mode === 'ellipse') {
+        drawEllipse(startX, startY, pos.x, pos.y);
+      }
+      savedCanvasState = null;
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', e => {
+      switch (e.key.toLowerCase()) {
+        case 'p': setMode('point'); break;
+        case 'l': setMode('line'); break;
+        case 'r': setMode('rectangle'); break;
+        case 'c': setMode('circle'); break;
+        case 'e': setMode('ellipse'); break;
+        case ' ':
+          e.preventDefault();
+          clearBtn.click();
+          break;
+      }
+    });
+
+  })();
+</script>
+
+</body>
+</html>
