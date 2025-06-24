@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor Grafis 2D</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5a9;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        button {
+            padding: 8px 15px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        button.active {
+            background: #2ecc71;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            background: white;
+            display: block;
+            margin: 0 auto;
+            cursor: url('img/black_circle_cursor.png'), auto; /* Pastikan path ini benar jika file ada */
+        }
+        .transform-controls, .windowing-controls {
+            margin-top: 15px;
+            padding: 15px;
+            background: #ecf0f1;
+            border-radius: 5px;
+        }
+        .coordinates {
+            margin-top: 10px;
+            text-align: center;
+            font-family: monospace;
+        }
+        .size-preview {
+            position: absolute;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+            pointer-events: none; /* Allows clicks to pass through */
+            z-index: 100; /* Ensure it's above the canvas */
+            white-space: nowrap; /* Prevent text wrapping */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Editor Grafis 2D</h1>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="color">Warna:</label>
+                <input type="color" id="color" value="#000000">
+            </div>
+
+            <div class="control-group">
+                <label for="thickness">Ketebalan:</label>
+                <input type="range" id="thickness" min="1" max="20" value="3">
+                <span id="thickness-value">3</span>
+            </div>
+            <div class="control-group">
+                <input type="checkbox" id="show-grid">
+                <label for="show-grid">Tampilkan Grid</label>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="btn-point" class="active">Titik</button>
+            <button id="btn-line">Garis</button>
+            <button id="btn-rect">Persegi</button>
+            <button id="btn-ellipse">Ellipse</button>
+            <button id="btn-clear">Hapus Semua</button>
+        </div>
+
+        <div class="transform-controls">
+            <h3>Transformasi Objek:</h3>
+            <div class="controls">
+                <button id="btn-translate">Translasi</button>
+                <button id="btn-rotate">Rotasi</button>
+                <button id="btn-scale">Scaling</button>
+                <button id="btn-select">Pilih Objek</button>
+            </div>
+        </div>
+
+        <div class="windowing-controls">
+            <h3>Windowing & Clipping:</h3>
+            <div class="controls">
+                <button id="btn-set-window">Atur Window</button>
+                <button id="btn-apply-windowing">Terapkan Windowing</button>
+                <button id="btn-apply-clipping">Terapkan Clipping</button>
+                <button id="btn-clear-window">Hapus Window</button>
+            </div>
+        </div>
+
+        <canvas id="canvas" width="800" height="500"></canvas>
+        <div class="coordinates" id="coordinates">Koordinat: (0, 0)</div>
+        <div class="size-preview" id="size-preview" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Inisialisasi Canvas
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const coordinatesDisplay = document.getElementById('coordinates');
+        const sizePreview = document.getElementById('size-preview');
+        const showGridCheckbox = document.getElementById('show-grid');
+
+        // Variabel State
+        let currentTool = 'point';
+        let color = document.getElementById('color').value;
+        let thickness = parseInt(document.getElementById('thickness').value);
+        let isDrawing = false;
+        let startX, startY;
+        let shapes = [];
+        let selectedShape = null;
+        let windowRect = null; // Stores the clipping window {x1, y1, x2, y2}
+        let isSettingWindow = false;
+        let showGrid = false; // Grid visibility state
+        const gridSize = 20; // Size of each grid square
+
+        // Event Listeners
+        document.getElementById('color').addEventListener('input', (e) => {
+            color = e.target.value;
+        });
+
+        document.getElementById('thickness').addEventListener('input', (e) => {
+            thickness = parseInt(e.target.value);
+            document.getElementById('thickness-value').textContent = thickness;
+        });
+
+        showGridCheckbox.addEventListener('change', (e) => {
+            showGrid = e.target.checked;
+            redrawAllShapes(); // Redraw to show/hide grid
+        });
+
+        // Menampilkan koordinat mouse dan preview ukuran/panjang
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            coordinatesDisplay.textContent = `Koordinat: (${Math.round(mouseX)}, ${Math.round(mouseY)})`;
+
+            if (isDrawing) {
+                updateSizePreview(startX, startY, mouseX, mouseY);
+                // Redraw all shapes, then draw the live preview of the current shape
+                redrawAllShapes(); // Draw existing shapes and window
+                drawLivePreview(startX, startY, mouseX, mouseY, isSettingWindow ? 'window' : currentTool);
+            } else {
+                redrawAllShapes(); // Redraw only to show/hide grid if no drawing
+            }
+        });
+
+        // Tool Buttons
+        document.querySelectorAll('button[id^="btn-"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tool = btn.id.replace('btn-', '');
+
+                if (tool === 'clear') {
+                    clearCanvas();
+                    return;
+                }
+
+                // Handle windowing specific buttons
+                if (tool === 'set-window') {
+                    isSettingWindow = true;
+                    currentTool = 'rect'; // Use rectangle drawing for window
+                    // Update active button to indicate windowing mode
+                    document.querySelectorAll('button[id^="btn-"]').forEach(b => {
+                        b.classList.remove('active');
+                    });
+                    btn.classList.add('active');
+                    return;
+                } else if (tool === 'apply-windowing') {
+                    applyWindowing();
+                    return;
+                } else if (tool === 'apply-clipping') {
+                    applyClipping();
+                    return;
+                } else if (tool === 'clear-window') {
+                    clearWindow();
+                    return;
+                }
+
+                // Update active button for drawing tools
+                document.querySelectorAll('button[id^="btn-"]').forEach(b => {
+                    b.classList.remove('active');
+                });
+                btn.classList.add('active');
+
+                currentTool = tool;
+                isSettingWindow = false; // Exit window setting mode when another tool is selected
+                sizePreview.style.display = 'none'; // Hide preview when tool changes
+            });
+        });
+
+        // Mouse Events
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            isDrawing = true;
+            sizePreview.style.display = 'block'; // Show preview on mousedown
+
+            if (currentTool === 'select') {
+                selectShape(startX, startY);
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (!isDrawing) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const endX = e.clientX - rect.left;
+            const endY = e.clientY - rect.top;
+
+            if (isSettingWindow) {
+                windowRect = { x1: startX, y1: startY, x2: endX, y2: endY };
+                isSettingWindow = false;
+                alert("Window set! Click 'Terapkan Windowing' or 'Terapkan Clipping' to see effects.");
+            } else {
+                // Save the shape
+                saveShape(startX, startY, endX, endY);
+            }
+
+            isDrawing = false;
+            sizePreview.style.display = 'none'; // Hide preview on mouseup
+            redrawAllShapes(); // Redraw all stored shapes
+        });
+
+        // Drawing Functions
+        function drawPoint(x, y, drawColor, drawThickness) {
+            ctx.beginPath();
+            ctx.arc(x, y, drawThickness / 2, 0, Math.PI * 2);
+            ctx.fillStyle = drawColor;
+            ctx.fill();
+        }
+
+        function drawLine(x1, y1, x2, y2, drawColor, drawThickness) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = drawColor;
+            ctx.lineWidth = drawThickness;
+            ctx.stroke();
+        }
+
+        function drawRectangle(x1, y1, x2, y2, drawColor, drawThickness) {
+            const width = x2 - x1;
+            const height = y2 - y1;
+            ctx.strokeStyle = drawColor;
+            ctx.lineWidth = drawThickness;
+            ctx.strokeRect(x1, y1, width, height);
+        }
+
+        function drawEllipse(x1, y1, x2, y2, drawColor, drawThickness) {
+            const centerX = (x1 + x2) / 2;
+            const centerY = (y1 + y2) / 2;
+            const radiusX = Math.abs(x2 - x1) / 2;
+            const radiusY = Math.abs(y2 - y1) / 2;
+
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = drawColor;
+            ctx.lineWidth = drawThickness;
+            ctx.stroke();
+        }
+
+        // Fungsi untuk menggambar preview langsung (garis putus-putus)
+        function drawLivePreview(x1, y1, x2, y2, toolType) {
+            ctx.setLineDash([5, 3]); // Dashed line for preview
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(0,0,0,0.7)'; // Slightly transparent black
+
+            if (toolType === 'window' || toolType === 'rect') {
+                const width = x2 - x1;
+                const height = y2 - y1;
+                ctx.strokeRect(x1, y1, width, height);
+            } else if (toolType === 'line') {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            } else if (toolType === 'ellipse') {
+                const centerX = (x1 + x2) / 2;
+                const centerY = (y1 + y2) / 2;
+                const radiusX = Math.abs(x2 - x1) / 2;
+                const radiusY = Math.abs(y2 - y1) / 2;
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            } else if (toolType === 'point') {
+                // No drag preview for point, it's just a click
+            }
+
+            ctx.setLineDash([]); // Reset line dash
+        }
+
+        // Fungsi untuk menampilkan preview ukuran/panjang
+        function updateSizePreview(x1, y1, x2, y2) {
+            // Only show for tools that involve a "drag" action
+            if (currentTool === 'point' && !isSettingWindow) {
+                sizePreview.style.display = 'none';
+                return;
+            }
+
+            let displayText = '';
+
+            if (currentTool === 'line' || isSettingWindow || currentTool === 'rect' || currentTool === 'ellipse') {
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+
+                if (currentTool === 'line') {
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    displayText = `Panjang: ${Math.round(length)} px`;
+                } else if (currentTool === 'rect' || isSettingWindow) {
+                    const width = Math.abs(dx);
+                    const height = Math.abs(dy);
+                    displayText = `W: ${Math.round(width)} px, H: ${Math.round(height)} px`;
+                } else if (currentTool === 'ellipse') {
+                    const radiusX = Math.abs(dx) / 2;
+                    const radiusY = Math.abs(dy) / 2;
+                    displayText = `RX: ${Math.round(radiusX)} px, RY: ${Math.round(radiusY)} px`;
+                }
+            }
+
+            sizePreview.textContent = displayText;
+            // Position the preview near the mouse cursor
+            sizePreview.style.left = `${event.clientX + 10}px`; // 10px offset from cursor
+            sizePreview.style.top = `${event.clientY + 10}px`;
+            sizePreview.style.display = 'block';
+        }
+
+        // Fungsi untuk redraw semua shapes dan grid
+        function redrawAllShapes() {
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // ... (kode untuk menggambar grid) ...
+
+    // Gambar the clipping window jika ada
+    if (windowRect) {
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        const winX = Math.min(windowRect.x1, windowRect.x2);
+        const winY = Math.min(windowRect.y1, windowRect.y2);
+        const winWidth = Math.abs(windowRect.x2 - windowRect.x1);
+        const winHeight = Math.abs(windowRect.y2 - windowRect.y1);
+        ctx.strokeRect(winX, winY, winWidth, winHeight);
+        ctx.setLineDash([]);
+    }
+
+    shapes.forEach(shape => {
+        let drawColor = shape.color;
+        if (shape.isWindowed) {
+            drawColor = 'orange'; // Change color if windowed
+        }
+
+        // Simpan konteks saat ini sebelum menerapkan clipping
+        ctx.save();
+
+        if (shape.isClipped && windowRect) {
+            // Atur path clipping menggunakan windowRect
+            const winX = Math.min(windowRect.x1, windowRect.x2);
+            const winY = Math.min(windowRect.y1, windowRect.y2);
+            const winWidth = Math.abs(windowRect.x2 - windowRect.x1);
+            const winHeight = Math.abs(windowRect.y2 - windowRect.y1);
+
+            ctx.beginPath();
+            ctx.rect(winX, winY, winWidth, winHeight);
+            ctx.clip(); // Ini akan membatasi semua gambar berikutnya hanya di dalam area ini
+        }
+
+        // Gambar shape setelah potensi clipping diatur
+        // Fungsi drawShape akan menggunakan drawColor dan thickness dari shape itu sendiri
+        drawShape(shape, drawColor, shape.thickness);
+
+        // Kembalikan konteks untuk menghilangkan clipping (penting!)
+        ctx.restore();
+
+        // Highlight selected shape (pastikan highlight digambar di luar area clipping)
+        if (selectedShape && selectedShape === shape) {
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]); // Dashed highlight
+            // Untuk highlight, kita perlu menggambar di luar ctx.clip(), jadi panggil drawShape di sini
+            // atau salin logika menggambar outline
+            drawShape(shape, 'red', shape.thickness + 4); // Thicker red outline
+            ctx.setLineDash([]);
+        }
+    });
+}
+
+// Pastikan fungsi drawShape tidak memiliki logika clipping internal lagi,
+// karena clipping sekarang ditangani di redrawAllShapes menggunakan ctx.clip()
+function drawShape(shape, drawColor, drawThickness) {
+    ctx.strokeStyle = drawColor;
+    ctx.fillStyle = drawColor;
+    ctx.lineWidth = drawThickness;
+    ctx.setLineDash([]); // Ensure solid lines for actual shapes
+
+    ctx.save(); // Simpan untuk transformasi rotasi/skala
+
+    if (shape.transform) {
+        const centerX = (shape.x1 + shape.x2) / 2;
+        const centerY = (shape.y1 + shape.y2) / 2;
+
+        ctx.translate(centerX, centerY);
+        ctx.rotate(shape.transform.angle || 0);
+        ctx.scale(shape.transform.scaleX || 1, shape.transform.scaleY || 1);
+        ctx.translate(-centerX, -centerY);
+    }
+
+    switch (shape.type) {
+        case 'point':
+            drawPoint(shape.x1, shape.y1, drawColor, drawThickness);
+            break;
+        case 'line':
+            drawLine(shape.x1, shape.y1, shape.x2, shape.y2, drawColor, drawThickness);
+            break;
+        case 'rect':
+            drawRectangle(shape.x1, shape.y1, shape.x2, shape.y2, drawColor, drawThickness);
+            break;
+        case 'ellipse':
+            drawEllipse(shape.x1, shape.y1, shape.x2, shape.y2, drawColor, drawThickness);
+            break;
+    }
+    ctx.restore(); // Kembalikan setelah transformasi
+}
+
+        // Shape Management
+        function saveShape(x1, y1, x2, y2) {
+            const shape = {
+                type: currentTool,
+                x1, y1, x2, y2,
+                color,
+                thickness,
+                isWindowed: false,
+                isClipped: false,
+                transform: {
+                    angle: 0, // Inisialisasi sudut rotasi
+                    scaleX: 1, // Inisialisasi skala X
+                    scaleY: 1  // Inisialisasi skala Y
+                }
+            };
+            shapes.push(shape);
+        }
+
+        function selectShape(x, y) {
+            selectedShape = null; // Clear previous selection
+            // Iterate in reverse to select topmost shape
+            for (let i = shapes.length - 1; i >= 0; i--) {
+                const shape = shapes[i];
+                const minX = Math.min(shape.x1, shape.x2);
+                const maxX = Math.max(shape.x1, shape.x2);
+                const minY = Math.min(shape.y1, shape.y2);
+                const maxY = Math.max(shape.y1, shape.y2);
+
+                // Simple bounding box hit detection
+                if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+                    selectedShape = shape;
+                    break; // Select the first (topmost) shape found
+                }
+            }
+
+            if (selectedShape) {
+                console.log("Shape selected:", selectedShape);
+            }
+            redrawAllShapes();
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            shapes = [];
+            selectedShape = null;
+            windowRect = null;
+            sizePreview.style.display = 'none';
+            redrawAllShapes(); // Redraw to clear everything including grid
+        }
+
+        // Transform Functions
+        document.getElementById('btn-translate').addEventListener('click', () => {
+            if (!selectedShape) {
+                alert("Pilih objek terlebih dahulu untuk translasi.");
+                return;
+            }
+
+            const dx = parseFloat(prompt("Masukkan pergeseran X:"));
+            const dy = parseFloat(prompt("Masukkan pergeseran Y:"));
+
+            if (!isNaN(dx) && !isNaN(dy)) {
+                selectedShape.x1 += dx;
+                selectedShape.x2 += dx;
+                selectedShape.y1 += dy;
+                selectedShape.y2 += dy;
+                redrawAllShapes();
+            } else {
+                alert("Input tidak valid untuk translasi.");
+            }
+        });
+
+        // Hapus event listener ganda ini:
+        // document.getElementById('btn-rotate').addEventListener('click', async () => { ... });
+
+        document.getElementById('btn-rotate').addEventListener('click', () => {
+            if (!selectedShape) {
+                alert("Pilih objek terlebih dahulu untuk rotasi.");
+                return;
+            }
+
+            const angleInput = prompt("Masukkan sudut rotasi (derajat):");
+            const angleDegrees = parseFloat(angleInput);
+
+            if (!isNaN(angleDegrees)) {
+                // Konversi derajat ke radian karena Math.sin/cos/rotate membutuhkan radian
+                const angleRadians = angleDegrees * Math.PI / 180;
+
+                // Update sudut rotasi pada objek yang dipilih
+                // Ini akan digunakan dalam fungsi drawShape
+                selectedShape.transform.angle = (selectedShape.transform.angle || 0) + angleRadians;
+
+                redrawAllShapes();
+            } else {
+                alert("Input sudut tidak valid.");
+            }
+        });
+
+        document.getElementById('btn-scale').addEventListener('click', () => {
+            if (!selectedShape) {
+                alert("Pilih objek terlebih dahulu untuk scaling.");
+                return;
+            }
+
+            const scaleX = parseFloat(prompt("Masukkan faktor skala X:"));
+            const scaleY = parseFloat(prompt("Masukkan faktor skala Y:"));
+
+            if (!isNaN(scaleX) && !isNaN(scaleY) && scaleX > 0 && scaleY > 0) {
+                // Hitung titik tengah shape
+                const centerX = (selectedShape.x1 + selectedShape.x2) / 2;
+                const centerY = (selectedShape.y1 + selectedShape.y2) / 2;
+
+                // Terapkan scaling relatif terhadap titik tengah
+                selectedShape.x1 = centerX + (selectedShape.x1 - centerX) * scaleX;
+                selectedShape.y1 = centerY + (selectedShape.y1 - centerY) * scaleY;
+                selectedShape.x2 = centerX + (selectedShape.x2 - centerX) * scaleX;
+                selectedShape.y2 = centerY + (selectedShape.y2 - centerY) * scaleY;
+
+                // Update faktor skala dalam objek shape jika diperlukan untuk transformasi berantai
+                selectedShape.transform.scaleX = (selectedShape.transform.scaleX || 1) * scaleX;
+                selectedShape.transform.scaleY = (selectedShape.transform.scaleY || 1) * scaleY;
+
+                redrawAllShapes();
+            } else {
+                alert("Input faktor skala tidak valid. Harus angka positif.");
+            }
+        });
+
+
+        // Windowing & Clipping Functions
+        function applyWindowing() {
+            if (!windowRect) {
+                alert("Silakan atur window terlebih dahulu.");
+                return;
+            }
+
+            const winMinX = Math.min(windowRect.x1, windowRect.x2);
+            const winMaxX = Math.max(windowRect.x1, windowRect.x2);
+            const winMinY = Math.min(windowRect.y1, windowRect.y2);
+            const winMaxY = Math.max(windowRect.y1, windowRect.y2);
+
+            shapes.forEach(shape => {
+                shape.isWindowed = false; // Reset
+                shape.isClipped = false; // Reset
+
+                const shapeMinX = Math.min(shape.x1, shape.x2);
+                const shapeMaxX = Math.max(shape.x1, shape.x2);
+                const shapeMinY = Math.min(shape.y1, shape.y2);
+                const shapeMaxY = Math.max(shape.y1, shape.y2);
+
+                if (!(shapeMaxX < winMinX || shapeMinX > winMaxX || shapeMaxY < winMinY || shapeMinY > winMaxY)) {
+                    shape.isWindowed = true;
+                }
+            });
+            redrawAllShapes();
+        }
+
+        function applyClipping() {
+            if (!windowRect) {
+                alert("Silakan atur window terlebih dahulu.");
+                return;
+            }
+
+            shapes.forEach(shape => {
+                shape.isWindowed = false;
+                shape.isClipped = false;
+
+                const shapeMinX = Math.min(shape.x1, shape.x2);
+                const shapeMaxX = Math.max(shape.x1, shape.x2);
+                const shapeMinY = Math.min(shape.y1, shape.y2);
+                const shapeMaxY = Math.max(shape.y1, shape.y2);
+
+                const winMinX = Math.min(windowRect.x1, windowRect.x2);
+                const winMaxX = Math.max(windowRect.x1, windowRect.x2);
+                const winMinY = Math.min(windowRect.y1, windowRect.y2);
+                const winMaxY = Math.max(windowRect.y1, windowRect.y2);
+
+                if (!(shapeMaxX < winMinX || shapeMinX > winMaxX || shapeMaxY < winMinY || shapeMinY > winMaxY)) {
+                    shape.isClipped = true;
+                }
+            });
+            redrawAllShapes();
+        }
+
+        function clearWindow() {
+            windowRect = null;
+            shapes.forEach(shape => {
+                shape.isWindowed = false;
+                shape.isClipped = false;
+            });
+            redrawAllShapes();
+        }
+
+        // Cohen-Sutherland Clipping Algorithm (for lines)
+        const INSIDE = 0; // 0000
+        const LEFT = 1;   // 0001
+        const RIGHT = 2;  // 0010
+        const BOTTOM = 4; // 0100
+        const TOP = 8;    // 1000
+
+        function computeOutCode(x, y, xmin, ymin, xmax, ymax) {
+            let code = INSIDE;
+            if (x < xmin)      code |= LEFT;
+            else if (x > xmax) code |= RIGHT;
+            if (y < ymin)      code |= BOTTOM;
+            else if (y > ymax) code |= TOP;
+            return code;
+        }
+
+        function cohenSutherlandClip(x1, y1, x2, y2, xmin, ymin, xmax, ymax) {
+            let outcode1 = computeOutCode(x1, y1, xmin, ymin, xmax, ymax);
+            let outcode2 = computeOutCode(x2, y2, xmin, ymin, xmax, ymax);
+            let accept = false;
+
+            while (true) {
+                if (!(outcode1 | outcode2)) {
+                    accept = true;
+                    break;
+                } else if (outcode1 & outcode2) {
+                    break;
+                } else {
+                    let x, y;
+                    const outcodeOut = outcode1 ? outcode1 : outcode2;
+
+                    if (outcodeOut & TOP) {
+                        x = x1 + (x2 - x1) * (ymax - y1) / (y2 - y1);
+                        y = ymax;
+                    } else if (outcodeOut & BOTTOM) {
+                        x = x1 + (x2 - x1) * (ymin - y1) / (y2 - y1);
+                        y = ymin;
+                    } else if (outcodeOut & RIGHT) {
+                        y = y1 + (y2 - y1) * (xmax - x1) / (x2 - x1);
+                        x = xmax;
+                    } else if (outcodeOut & LEFT) {
+                        y = y1 + (y2 - y1) * (xmin - x1) / (x2 - x1);
+                        x = xmin;
+                    }
+
+                    if (outcodeOut === outcode1) {
+                        x1 = x;
+                        y1 = y;
+                        outcode1 = computeOutCode(x1, y1, xmin, ymin, xmax, ymax);
+                    } else {
+                        x2 = x;
+                        y2 = y;
+                        outcode2 = computeOutCode(x2, y2, xmin, ymin, xmax, ymax);
+                    }
+                }
+            }
+            if (accept) {
+                return { x1, y1, x2, y2 };
+            }
+            return null;
+        }
+        // Initial redraw to display grid if checkbox is initially checked (though it's not by default)
+        redrawAllShapes();
+    </script>
+</body>
+</html>
